@@ -55,6 +55,66 @@ def setup_logger(log_filename: Pathlike, log_level: str = 'info', use_console: b
         logging.getLogger('').addHandler(console)
 
 
+def load_pretrained_model(
+        filename: Pathlike,
+        model: AcousticModel,
+        optimizer: Optional[object] = None,
+        scheduler: Optional[object] = None,
+        scaler: Optional[GradScaler] = None,
+) -> Dict[str, Any]:
+    logging.info('load pretrained model from {}'.format(filename))
+
+    checkpoint = torch.load(filename, map_location='cpu')
+
+    keys = [
+        'state_dict', 'optimizer', 'scheduler', 'epoch', 'learning_rate', 'objf', 'valid_objf',
+        'num_features', 'num_classes', 'subsampling_factor',
+        'global_batch_idx_train'
+    ]
+    missing_keys = set(keys) - set(checkpoint.keys())
+    if missing_keys:
+        raise ValueError(f"Missing keys in checkpoint: {missing_keys}")
+
+    if isinstance(model, DistributedDataParallel):
+        model = model.module
+        
+    exclude_keys = ['P_scores', 'encoder_output_layer.1.weight', 'encoder_output_layer.1.bias']
+
+    if not list(model.state_dict().keys())[0].startswith('module.') \
+            and list(checkpoint['state_dict'])[0].startswith('module.'):
+        # the checkpoint was saved by DDP
+        logging.info('load checkpoint from DDP')
+        dst_state_dict = model.state_dict()
+        src_state_dict = checkpoint['state_dict']
+        for key in dst_state_dict.keys():
+            src_key = '{}.{}'.format('module', key)
+            dst_state_dict[key] = src_state_dict.pop(src_key)
+        assert len(src_state_dict) == 0
+        model.load_state_dict(dst_state_dict)
+    else:
+        src_state = checkpoint['state_dict']
+        dst_state = model.state_dict()
+        if exclude_keys is not None:
+            for e in exclude_keys:
+                src_state = {k: v for k, v in src_state.items() if not k.startswith(e)}
+        dst_state.update(src_state)
+        model.load_state_dict(dst_state)
+
+    model.num_features = checkpoint['num_features']
+    model.num_classes = checkpoint['num_classes']
+    model.subsampling_factor = checkpoint['subsampling_factor']
+
+    if optimizer is not None:
+        optimizer.load_state_dict(checkpoint['optimizer'])
+
+    if scheduler is not None:
+        scheduler.load_state_dict(checkpoint['scheduler'])
+
+    if scaler is not None:
+        scaler.load_state_dict(checkpoint['grad_scaler'])
+
+    return checkpoint
+
 def load_checkpoint(
         filename: Pathlike,
         model: AcousticModel,
@@ -289,6 +349,10 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
+def str_or_none(v):
+    if v.strip().lower() in ("none", "null", "nil"):
+        return None
+    return v
 
 def describe(model: torch.nn.Module):
     logging.info('=' * 80)

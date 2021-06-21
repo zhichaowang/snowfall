@@ -51,4 +51,29 @@ class Lexicon:
         ans.sort()
         return ans
 
+    def phone_symbols_disambiguation(
+            self,
+            regex: str = re.compile(r'^#\d+$')
+    ) -> List[int]:
+        '''Return a list of phone IDs containing no disambiguation symbols.
 
+        Caution:
+          0 is not a phone ID so it is excluded from the return value.
+
+        Args:
+          regex:
+            Symbols containing this pattern are disambiguation symbols.
+        Returns:
+          Return a list of symbol IDs excluding those from disambiguation symbols.
+        '''
+        symbols = self.phones.symbols
+        ans = []
+        for s in symbols:
+            if not regex.match(s):
+                ans.append(self.phones[s])
+        if 0 in ans:
+            ans.remove(0)
+        # add "#0" to ans for unigram
+        ans.append(self.phones["#0"])
+        ans.sort()
+        return ans

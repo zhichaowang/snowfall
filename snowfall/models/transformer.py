@@ -813,7 +813,6 @@ def get_hierarchical_targets(ys: List[List[int]], lexicon: k2.Fsa) -> List[Tenso
 
     transcripts = k2.create_fsa_vec([k2.linear_fsa(x, device=device) for x in ys])
     transcripts_with_self_loops = k2.add_epsilon_self_loops(transcripts)
-
     transcripts_lexicon = k2.intersect(
         L_inv, transcripts_with_self_loops,
         treat_epsilons_specially=False)
@@ -829,7 +828,30 @@ def get_hierarchical_targets(ys: List[List[int]], lexicon: k2.Fsa) -> List[Tenso
 
     return ys
 
+def Initialize(model: AcousticModel, init_method: str):
+    """Initialize weights of a neural network module."""
+    if isinstance(model, DistributedDataParallel):
+        model = model.module
 
+    # weight init
+    for p in model.parameters():
+        if p.dim() > 1:
+            if init_method == "xavier_uniform":
+                torch.nn.init.xavier_uniform_(p.data)
+            elif init_method == "xavier_normal":
+                torch.nn.init.xavier_normal_(p.data)
+            else:
+                raise ValueError("Unknown initialization: " + init)
+ 
+    # bias init
+    for p in model.parameters():
+        if p.dim() == 1:
+            p.data.zero_()
+
+    # reset some modules with default init
+    for m in model.modules():
+        if isinstance(m, (torch.nn.Embedding, torch.nn.LayerNorm)):
+            m.reset_parameters()
 
 def test_transformer():
     t = Transformer(40, 1281)

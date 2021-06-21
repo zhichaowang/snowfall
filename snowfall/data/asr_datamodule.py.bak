@@ -88,20 +88,17 @@ class AsrDataModule(DataModule):
         )
 
     def train_dataloaders(self) -> DataLoader:
-#        logging.info("About to get train cuts")
-        print("About to get train cuts")
+        logging.info("About to get train cuts")
         cuts_train = self.train_cuts()
 
-#        logging.info("About to get Musan cuts")
-#        cuts_musan = load_manifest(self.args.feature_dir / 'cuts_musan.json.gz')
+        logging.info("About to get Musan cuts")
+        cuts_musan = load_manifest(self.args.feature_dir / 'cuts_musan.json.gz')
 
         logging.info("About to create train dataset")
-#        transforms = [CutMix(cuts=cuts_musan, prob=0.5, snr=(10, 20))]
+        transforms = [CutMix(cuts=cuts_musan, prob=0.5, snr=(10, 20))]
         if self.args.concatenate_cuts:
-#            logging.info(f'Using cut concatenation with duration factor '
-#                         f'{self.args.duration_factor} and gap {self.args.gap}.')
-            print('Using cut concatenation with duration factor '
-                  '{self.args.duration_factor} and gap {self.args.gap}.')
+            logging.info(f'Using cut concatenation with duration factor '
+                         f'{self.args.duration_factor} and gap {self.args.gap}.')
             # Cut concatenation should be the first transform in the list,
             # so that if we e.g. mix noise in, it will fill the gaps between different utterances.
             transforms = [
@@ -109,14 +106,16 @@ class AsrDataModule(DataModule):
                                  duration_factor=self.args.duration_factor,
                                  gap=self.args.gap
                              )
-                         ] 
-            train = K2SpeechRecognitionDataset(
-                cuts_train,
-                cut_transforms=transforms,
-            )
-        else:
-            train = K2SpeechRecognitionDataset(
-                cuts_train,
+                         ] + transforms
+
+        input_transforms = [
+            SpecAugment(num_frame_masks=2, features_mask_size=27, num_feature_masks=2, frames_mask_size=100)
+        ]
+
+        train = K2SpeechRecognitionDataset(
+            cuts_train,
+            cut_transforms=transforms,
+            input_transforms=input_transforms
         )
 
         if self.args.on_the_fly_feats:
@@ -164,29 +163,18 @@ class AsrDataModule(DataModule):
         logging.info("About to get dev cuts")
         cuts_valid = self.valid_cuts()
 
-        transforms = [ ]
-        if self.args.concatenate_cuts:
-            transforms = [ CutConcatenate(
-                                 duration_factor=self.args.duration_factor,
-                                 gap=self.args.gap)
-                          ] + transforms
-
-
         logging.info("About to create dev dataset")
         if self.args.on_the_fly_feats:
             cuts_valid = cuts_valid.drop_features()
             validate = K2SpeechRecognitionDataset(
                 cuts_valid.drop_features(),
-                cut_transforms=transforms,
                 input_strategy=OnTheFlyFeatures(Fbank(FbankConfig(num_mel_bins=80)))
             )
         else:
-            validate = K2SpeechRecognitionDataset(cuts_valid,
-                                                  cut_transforms=transforms)
+            validate = K2SpeechRecognitionDataset(cuts_valid)
         valid_sampler = SingleCutSampler(
             cuts_valid,
             max_duration=self.args.max_duration,
-            shuffle=True,
         )
         logging.info("About to create dev dataloader")
         valid_dl = DataLoader(
@@ -209,9 +197,8 @@ class AsrDataModule(DataModule):
             logging.debug("About to create test dataset")
             test = K2SpeechRecognitionDataset(
                 cuts_test,
+                input_strategy=OnTheFlyFeatures(Fbank(FbankConfig(num_mel_bins=80)))
             )
-#                input_strategy=OnTheFlyFeatures(Fbank(FbankConfig(num_mel_bins=80)))
-#            )
             sampler = SingleCutSampler(cuts_test, max_duration=self.args.max_duration)
             logging.debug("About to create test dataloader")
             test_dl = DataLoader(test, batch_size=None, sampler=sampler, num_workers=1)

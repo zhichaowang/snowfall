@@ -41,7 +41,6 @@ def build_ctc_topo(tokens: List[int]) -> k2.Fsa:
     ans = k2.arc_sort(ans)
     return ans
 
-
 def build_ctc_topo2(phones: List[int]):
     # See https://github.com/k2-fsa/k2/issues/746#issuecomment-856421616
     assert 0 in phones, 'We assume 0 is the ID of the blank symbol'

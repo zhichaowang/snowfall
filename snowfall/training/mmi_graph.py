@@ -8,7 +8,7 @@ import k2
 import torch
 
 from snowfall.common import get_phone_symbols
-from .ctc_graph import build_ctc_topo
+from .ctc_graph import build_ctc_topo, build_ctc_topo2
 from ..lexicon import Lexicon
 
 
@@ -40,6 +40,38 @@ def create_bigram_phone_lm(phones: List[int]) -> k2.Fsa:
     rules += f'{final_state}'
     return k2.Fsa.from_str(rules)
 
+def create_unigram_phone_lm(phones: List[int]) -> k2.Fsa:
+    '''Create a unigram phone LM.
+    The resulting FSA (P) has a start-state and a state for
+    each phone 1, 2, ....; and each of the above-mentioned states
+    has a transition to the state for each phone and also to the final-state.
+
+    Caution:
+      blank is not a phone.
+
+    Args:
+      A list of phone IDs.
+
+    Returns:
+      An FSA representing the bigram phone LM.
+    '''
+    assert 0 not in phones
+    final_state = len(phones) + 1
+    rules = ''
+    
+    for i in range(1, final_state):
+      rules += f'0 0 {phones[i-1]} 0.0\n'
+    rules += f'0 {final_state} -1 0.0\n'
+    rules += f'{final_state}' 
+#    for i in range(1, final_state):
+#        rules += f'0 {i} {phones[i-1]} 0.0\n'
+
+#    for i in range(1, final_state):
+##        rules += f'{i} 0 {phones[-1]} 0.0\n'
+#        rules += f'{i} {final_state} -1 0.0\n'
+##        rules += f'{i} {final_state} 0 0.0\n'
+#    rules += f'{final_state}'
+    return k2.Fsa.from_str(rules)
 
 class MmiTrainingGraphCompiler(object):
 
@@ -79,6 +111,7 @@ class MmiTrainingGraphCompiler(object):
         phone_symbols_with_blank = [0] + phone_symbols
 
         ctc_topo = build_ctc_topo(phone_symbols_with_blank).to(device)
+#        ctc_topo = build_ctc_topo2(phone_symbols_with_blank).to(device)
         assert ctc_topo.requires_grad is False
 
         self.ctc_topo_inv = k2.arc_sort(ctc_topo.invert_())
@@ -122,6 +155,7 @@ class MmiTrainingGraphCompiler(object):
         ctc_topo_P = k2.intersect(self.ctc_topo_inv,
                                   P_with_self_loops,
                                   treat_epsilons_specially=False).invert()
+#        ctc_topo_P.draw("/search/speech/wangzhichao/snowfall/egs/sogou/asr/simple_v1/ctc_topo.pdf")
 
         ctc_topo_P = k2.arc_sort(ctc_topo_P)
 
